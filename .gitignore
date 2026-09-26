@@ -1,0 +1,14 @@
+# data, outputs and archives (large / competition-provided)
+*.zip
+student_resource/
+output*/
+data/
+work/
+*.parquet
+*.npy
+*.pt
+*.tsv
+# os / python
+.DS_Store
+__pycache__/
+*.pyc
