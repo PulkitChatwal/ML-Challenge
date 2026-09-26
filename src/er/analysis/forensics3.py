@@ -1,5 +1,6 @@
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import polars as pl
-O="/teamspace/studios/this_studio/data"; r=lambda n: pl.read_parquet(f"{O}/{n}.parquet")
+from common import DATA as O; r=lambda n: pl.read_parquet(f"{O}/{n}.parquet")
 s1=r("train_source1"); gt=r("train_ground_truth"); o=pl.concat([r("train_source2"), r("train_source3")])
 pairs=gt.with_columns(pl.col("matched_entity_ids").str.split(",")).explode("matched_entity_ids").filter(pl.col("matched_entity_ids")!="").select(pl.col("source1_entity_id").alias("s1"), pl.col("matched_entity_ids").alias("x")).sample(300000,seed=0)
 tok=lambda c: pl.col(c).str.to_lowercase().str.extract_all(r"[a-z]{3,}|[0-9]+").list.unique()

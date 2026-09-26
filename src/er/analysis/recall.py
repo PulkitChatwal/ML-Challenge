@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import polars as pl, numpy as np
 from common import *
 ids1 = pl.read_parquet(f"{DATA}/train_source1.parquet", columns=["entity_id"]).with_row_index("s").select(pl.col("s").cast(pl.Int32), pl.col("entity_id").alias("s1"))

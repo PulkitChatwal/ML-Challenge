@@ -3,15 +3,12 @@ from rapidfuzz import fuzz
 from rapidfuzz.distance import JaroWinkler, Levenshtein
 from rapidfuzz.process import cpdist
 from common import *
-from normalize import add_norm, ADDR_STOP
+from normalize import ADDR_STOP
 import gc
 split = sys.argv[1]; TAG = sys.argv[2] if len(sys.argv) > 2 else ""; t0 = time.time()
 n1 = pl.scan_parquet(f"{DATA}/{split}_source1.parquet").select(pl.len()).collect().item()
-N = pl.read_parquet(f"{WORK}/{split}_norm.parquet") if os.path.exists(f"{WORK}/{split}_norm.parquet") else None
-if N is None:
-    N = add_norm(pl.concat([s1.with_columns(pl.lit(1).cast(pl.Int8).alias("src")),
-                            o.with_columns(pl.col("entity_id").str.slice(1, 1).cast(pl.Int8).alias("src"))]))
-    N.write_parquet(f"{WORK}/{split}_norm.parquet")
+if not os.path.exists(f"{WORK}/{split}_norm.parquet"): sys.exit("run norm_all.py first")
+N = pl.read_parquet(f"{WORK}/{split}_norm.parquet")
 print("norm", time.time() - t0, flush=True)
 # ---- token CSR with per-country IDF (transductive, uses only provided data) ----
 def csr(col, stop=()):

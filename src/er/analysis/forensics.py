@@ -1,5 +1,6 @@
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import polars as pl, re, sys, random
-D = "/teamspace/studios/this_studio/student_resource/dataset"
+from common import DATASET as D
 rd = lambda p: (pl.read_csv(p, separator="\t", quote_char=None, infer_schema_length=0, missing_utf8_is_empty_string=True).fill_null(""))
 tr = {i: rd(f"{D}/train/train_source{i}.tsv") for i in (1,2,3)}
 te = {i: rd(f"{D}/test/test_source{i}.tsv") for i in (1,2,3)}

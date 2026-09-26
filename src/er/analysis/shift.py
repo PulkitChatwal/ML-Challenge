@@ -1,3 +1,4 @@
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np, polars as pl
 from common import *
 tr = pl.read_parquet(f"{WORK}/train_scores.parquet"); te = pl.read_parquet(f"{WORK}/test_scores.parquet")

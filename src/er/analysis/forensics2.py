@@ -1,5 +1,6 @@
+import sys, os; sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import polars as pl
-O="/teamspace/studios/this_studio/data"
+from common import DATA as O
 r=lambda n: pl.read_parquet(f"{O}/{n}.parquet")
 s1=r("train_source1"); gt=r("train_ground_truth")
 o=pl.concat([r("train_source2"), r("train_source3")])
