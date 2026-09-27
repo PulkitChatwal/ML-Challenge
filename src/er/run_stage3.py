@@ -1,8 +1,8 @@
 # stage-2 v2: reuse stage-1 p1, add cross-encoder score + its context; evaluate VAL; optionally predict test
-import sys, glob, json, pickle, time, numpy as np, polars as pl, lightgbm as lgb
+import sys, os, glob, json, pickle, time, numpy as np, polars as pl, lightgbm as lgb
 from common import *
 from model import ctx, exp_f05, score, P1, EXCL
-t0 = time.time(); MODE = sys.argv[1]  # "train" or "test"
+t0 = time.time(); MODE = sys.argv[1]; TAGV = os.environ.get("ER_TAG", "v3")  # "train" or "test"
 KEEP = ["s", "x", "sim", "rx", "rs", "wa_cont", "wn_cont", "n_jw", "a_tset", "nsp_part", "num_inter", "x_src", "x_addr_empty", "x_nonlatin",
         "n_tset", "nc_ratio", "a_ratio", "wa_jac", "num_jac", "num_reldiff", "fnum_eq", "x_is_domain"]
 def build(split):
@@ -13,6 +13,10 @@ def build(split):
     c = c.join(pl.read_parquet(f"{WORK}/{split}_ce.parquet"), on=["s", "x"], how="left").with_columns(pl.col("ce").fill_null(-12.0))
     c = c.join(pl.read_parquet(f"{WORK}/{split}_ce2.parquet"), on=["s", "x"], how="left").with_columns(pl.col("ce2").fill_null(-12.0))
     c = c.join(pl.read_parquet(f"{WORK}/{split}_sib.parquet"), on=["s", "x"], how="left")
+    for e in [v for v in os.environ.get("ER_CE_EXTRA", "").split(",") if v]:   # later cross-encoder rounds
+        c = c.join(pl.read_parquet(f"{WORK}/{split}_{e}.parquet"), on=["s", "x"], how="left").with_columns(pl.col(e).fill_null(-12.0))
+        c = c.with_columns(pl.col(e).rank("ordinal", descending=True).over("x").cast(pl.Int16).alias(f"{e}_rank_x"),
+                           (pl.col(e) - pl.col(e).max().over("x")).alias(f"{e}_gap_x"), (pl.col(e) > 0).sum().over("s").alias(f"{e}_hi_s"))
     c = ctx(c, c["p1"].to_numpy())
     c = c.with_columns(
         pl.col("ce").rank("ordinal", descending=True).over("x").cast(pl.Int16).alias("ce_rank_x"),
@@ -30,10 +34,13 @@ fa, fb = LGB_FOLDS
 if MODE == "train":
     c = build("train"); F2 = [k for k in c.columns if k not in EXCL and k not in ("p1", "q")]
     print("rows", c.height, "feats", len(F2), time.time() - t0, flush=True)
-    m2 = {}
-    for k in (fa, fb):
-        d = c.filter(pl.col("f") == k)
-        m2[k] = lgb.train(P1, lgb.Dataset(d.select(pl.col(F2).cast(pl.Float32)).to_numpy(), d["y"].to_numpy()), num_boost_round=400)
+    m2 = {}; ROUNDS = int(os.environ.get("ER_S2_ROUNDS", "400"))
+    for k, kv in ((fa, fb), (fb, fa)):
+        d = c.filter(pl.col("f") == k); dv = c.filter(pl.col("f") == kv).sample(fraction=0.3, seed=0)
+        dtr = lgb.Dataset(d.select(pl.col(F2).cast(pl.Float32)).to_numpy(), d["y"].to_numpy())
+        dva = lgb.Dataset(dv.select(pl.col(F2).cast(pl.Float32)).to_numpy(), dv["y"].to_numpy(), reference=dtr)
+        m2[k] = lgb.train(P1, dtr, num_boost_round=ROUNDS, valid_sets=[dva], callbacks=[lgb.early_stopping(50, verbose=False)])
+        print("stage2 fold", k, "best iter", m2[k].best_iteration, time.time() - t0, flush=True)
     X2 = c.select(pl.col(F2).cast(pl.Float32)).to_numpy(); qa, qb = m2[fa].predict(X2), m2[fb].predict(X2); del X2
     f2 = c["f"].to_numpy(); c = c.with_columns(pl.Series("q", np.where(f2 == fa, qb, np.where(f2 == fb, qa, (qa + qb) / 2))))
     imp = sorted(zip(m2[fa].feature_importance("gain"), F2), reverse=True); print("top", [n for _, n in imp[:12]], flush=True)
@@ -56,17 +63,19 @@ if MODE == "train":
         res["expF"] = score(pred, truth); print(tag, {k: round(v, 5) for k, v in res.items()}, flush=True); return res
     r = evaluate(list(LGB_FOLDS), "LGB-oof"); evaluate(list(VAL_FOLDS), "VAL")
     k = max(r, key=r.get)
-    pickle.dump({"m2": m2, "F2": F2, "cfg": {"method": "expF" if k == "expF" else "th", "th": float(k[2:]) if k != "expF" else None}}, open(f"{WORK}/models_v3.pkl", "wb"))
+    pickle.dump({"m2": m2, "F2": F2, "cfg": {"method": "expF" if k == "expF" else "th", "th": float(k[2:]) if k != "expF" else None}}, open(f"{WORK}/models_{TAGV}.pkl", "wb"))
+    c.select("s", "x", "y", "f", "p1", "q").write_parquet(f"{WORK}/train_scores_{TAGV}.parquet")
     print("decision", k, time.time() - t0)
 else:
-    M = pickle.load(open(f"{WORK}/models_v3.pkl", "rb")); cfg = M["cfg"]
+    M = pickle.load(open(f"{WORK}/models_{TAGV}.pkl", "rb")); cfg = M["cfg"]
     c = build("test"); X2 = c.select(pl.col(M["F2"]).cast(pl.Float32)).to_numpy()
     c = c.with_columns(pl.Series("q", np.mean([m.predict(X2) for m in M["m2"].values()], 0))); del X2
     ids1 = pl.read_parquet(f"{DATA}/test_source1.parquet", columns=["entity_id"])["entity_id"].to_numpy()
     ido = pl.concat([pl.read_parquet(f"{DATA}/test_source{i}.parquet", columns=["entity_id"]) for i in (2, 3)])["entity_id"].to_numpy()
+    c.select("s", "x", "p1", "q").write_parquet(f"{WORK}/test_scores_{TAGV}.parquet")
     best = c.filter(pl.col("q") == pl.col("q").max().over("x")).unique("x", keep="first")
     sel = exp_f05(best.filter(pl.col("q") > 0.02)).filter(pl.col("pick")) if cfg["method"] == "expF" else best.filter(pl.col("q") > cfg["th"])
-    OUT = f"{ROOT}/output_v3"; import os; os.makedirs(OUT, exist_ok=True)
+    OUT = f"{ROOT}/output_{TAGV}"; import os; os.makedirs(OUT, exist_ok=True)
     def write(df, col, path):
         lists = {}
         for s, x in df.select("s", "x").iter_rows(): lists.setdefault(s, []).append(x)

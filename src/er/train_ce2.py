@@ -1,18 +1,21 @@
-# cross-encoder v2: continue from ce.pt on train EMB-fold pairs + high-confidence test pseudo-labels (France-weighted)
+# cross-encoder adaptation (default: v2 from ce.pt; set ER_PSEUDO/ER_CE_INIT/ER_CE_OUT for later rounds): continue on train EMB-fold pairs + high-confidence test pseudo-labels (France-weighted)
 import sys, math, numpy as np, polars as pl, torch, time
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer, AutoModel, get_cosine_schedule_with_warmup
 from common import *
 t0 = time.time(); rng = np.random.default_rng(1)
+import os
+PSEUDO = os.environ.get("ER_PSEUDO", "test_scores"); CE_INIT = os.environ.get("ER_CE_INIT", "ce"); CE_OUT = os.environ.get("ER_CE_OUT", "ce2")
+N_FR = int(os.environ.get("ER_N_FR", "900000")); N_OTH = int(os.environ.get("ER_N_OTH", "600000"))
 # --- test pseudo labels ---
-te = pl.read_parquet(f"{WORK}/test_scores.parquet")
+te = pl.read_parquet(f"{WORK}/{PSEUDO}.parquet")
 cte = pl.read_parquet(f"{DATA}/test_source1.parquet", columns=["country"])["country"].to_numpy()
 te = te.with_columns(pl.col("q").max().over("x").alias("qm"), pl.col("q").rank("ordinal", descending=True).over("x").alias("r"))
 pos = te.filter((pl.col("r") == 1) & (pl.col("q") > 0.97)).with_columns(pl.lit(1.0).alias("y"))
 neg1 = te.filter((pl.col("qm") > 0.97) & (pl.col("r") > 1) & (pl.col("r") <= 3)).with_columns(pl.lit(0.0).alias("y"))
 neg2 = te.filter((pl.col("qm") < 0.005) & (pl.col("r") <= 2)).with_columns(pl.lit(0.0).alias("y"))
 ps = pl.concat([pos, neg1, neg2]).select("s", "x", "y").with_columns(pl.Series("fr", cte[pl.concat([pos, neg1, neg2])["s"].to_numpy()] == "France"))
-fr = ps.filter(pl.col("fr")).sample(min(900_000, ps.filter(pl.col("fr")).height), seed=1); oth = ps.filter(~pl.col("fr")).sample(600_000, seed=1)
+fr = ps.filter(pl.col("fr")).sample(min(N_FR, ps.filter(pl.col("fr")).height), seed=1); oth = ps.filter(~pl.col("fr")).sample(min(N_OTH, ps.filter(~pl.col("fr")).height), seed=1)
 ps = pl.concat([fr, oth]).select("s", "x", "y").with_columns(pl.lit("test").alias("split"))
 print("pseudo", ps.height, "france", fr.height, "pos rate", ps["y"].mean(), flush=True)
 # --- train pairs (EMB folds, hard) ---
@@ -45,7 +48,7 @@ class CE(torch.nn.Module):
         super().__init__(); s.enc = AutoModel.from_pretrained(f"{WORK}/bienc"); s.head = torch.nn.Linear(s.enc.config.hidden_size, 1)
     def forward(s, input_ids, attention_mask):
         return s.head(s.enc(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state[:, 0]).squeeze(-1)
-m = CE(); m.load_state_dict(torch.load(f"{WORK}/ce.pt")); m = m.cuda()
+m = CE(); m.load_state_dict(torch.load(f"{WORK}/{CE_INIT}.pt")); m = m.cuda()
 dl = DataLoader(DS(), batch_size=None, shuffle=True, num_workers=4, prefetch_factor=4)
 opt = torch.optim.AdamW(m.parameters(), lr=2e-5, weight_decay=0.01)
 sch = get_cosine_schedule_with_warmup(opt, int(0.03 * len(dl)), len(dl)); scaler = torch.amp.GradScaler(); run = 0
@@ -56,4 +59,4 @@ for i, b in enumerate(dl):
     opt.zero_grad(); scaler.scale(loss).backward(); scaler.unscale_(opt); torch.nn.utils.clip_grad_norm_(m.parameters(), 1.0); scaler.step(opt); scaler.update(); sch.step()
     run = 0.98 * run + 0.02 * loss.item()
     if i % 500 == 0: print(i, len(dl), round(run, 4), round(time.time() - t0), flush=True)
-torch.save(m.state_dict(), f"{WORK}/ce2.pt"); print("saved", time.time() - t0)
+torch.save(m.state_dict(), f"{WORK}/{CE_OUT}.pt"); print("saved", time.time() - t0)
