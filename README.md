@@ -7,6 +7,7 @@ Match every Source 1 business record to its Source 2 / Source 3 records (zero, o
 | v1 | Bi-encoder blocking + two-stage LightGBM + per-entity expected-F0.5 decision | 0.9856 | 0.978 |
 | v2 | + cross-encoder score and its competition features | 0.9900 | 0.985 |
 | v3 | + cross-encoder v2 adapted to France with test pseudo-labels, sibling-consensus features | 0.9903 | — |
+| v4 | + third pseudo-label round from v3 test scores (`run_round3.sh`), early-stopped stage 2 | 0.9904 | — |
 
 Validation is a held-out fold of Source 1 entities with 19% of all Source 1 entities removed, so their records become distractors. This matches the test set's record density (5.75 Source 2+3 records per Source 1 entity).
 

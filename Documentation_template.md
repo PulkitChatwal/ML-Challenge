@@ -14,7 +14,7 @@ A blocking-plus-matching pipeline built around the structure of the data:
 - Each Source 1 entity's final match set is the one that maximises its expected F0.5.
 - For France, which is absent from training, cross-encoders were adapted with high-confidence pseudo-labels from the test files themselves. No external data was used.
 
-Held-out validation macro F0.5 is 0.990, measured under test-like distractor density.
+Held-out validation macro F0.5 is 0.9904, measured under test-like distractor density.
 
 ---
 
@@ -95,13 +95,14 @@ Validation also removes 19% of all Source 1 entities at random, turning their re
 
 ## 5. Results & Error Analysis
 
-- **F_0.5 Score (macro):** 0.9903 on validation (fold 0, test-like distractor density). Public leaderboard: v1 0.978, v2 0.985.
+- **F_0.5 Score (macro):** 0.9904 on validation (v4) (fold 0, test-like distractor density). Public leaderboard: v1 0.978, v2 0.985.
 
 | Version | Change | Validation F0.5 |
 |---|---|---|
 | v1 | Blocking + stage 1/2 + expected-F0.5 decision | 0.9856 |
 | v2 | + cross-encoder | 0.9900 |
 | v3 | + France-adapted cross-encoder, sibling consensus | 0.9903 |
+| v4 | + third pseudo-label round (from v3 test scores), early-stopped stage 2 | 0.9904 |
 
 - **Common false positives (wrong merges):**
   - Planted decoys: same address, one distinctive name token changed ("CZX Auto Glass" vs "CZXE Anto Glass", "Drayify" vs "Drayique").
@@ -119,7 +120,7 @@ Validation also removes 19% of all Source 1 entities at random, turning their re
 The largest gains came from treating the data as the generator built it:
 - per-record exclusivity and set-level expected-F0.5 decisions instead of independent pair thresholds;
 - a cross-encoder stacked into the GBDT (+0.0044 validation F0.5);
-- test-time pseudo-label adaptation for the unseen country, which cut uncertain test decisions for France from 6.1% to 3.7%.
+- test-time pseudo-label adaptation for the unseen country, which cut uncertain test decisions for France from 6.1% to 2.75%.
 
 The main lesson: calibrating validation to the test's distractor density was essential for reliable decisions.
 
@@ -142,11 +143,11 @@ Hardware: 1Ã— NVIDIA L4 (24 GB), 8 vCPU, 32 GB RAM. End-to-end time is about 8â€
 
 Uncertain test decisions (best score between 0.2 and 0.8), an unsupervised proxy for test difficulty:
 
-| Country | v1 | v3 |
-|---|---|---|
-| France | 6.1% | 3.7% |
-| India | 3.2% | 1.0% |
-| US | 2.8% | 1.5% |
+| Country | v1 | v3 | v4 |
+|---|---|---|---|
+| France | 6.1% | 3.7% | 2.75% |
+| India | 3.2% | 1.0% | 1.0% |
+| US | 2.8% | 1.5% | 1.5% |
 
 Where validation true pairs end up (v3):
 
