@@ -7,7 +7,9 @@ Match every Source 1 business record to its Source 2 / Source 3 records (zero, o
 | v1 | Bi-encoder blocking + two-stage LightGBM + per-entity expected-F0.5 decision | 0.9856 | 0.978 |
 | v2 | + cross-encoder score and its competition features | 0.9900 | 0.985 |
 | v3 | + cross-encoder v2 adapted to France with test pseudo-labels, sibling-consensus features | 0.9903 | — |
-| v4 | + third pseudo-label round from v3 test scores (`run_round3.sh`), early-stopped stage 2 | 0.9904 | — |
+| v4 | + third pseudo-label round from v3 test scores (`run_round3.sh`), early-stopped stage 2 | 0.9904 | 0.986 |
+| v5 | + language-agnostic generic-word features and same-address counts (`run_round4.sh`) | 0.9905 | 0.987 |
+| **final** | v5 with French decision cut-off 0.5 instead of 0.7 (`variant.py v5 France=0.5`) | 0.9905 | **0.988** |
 
 Validation is a held-out fold of Source 1 entities with 19% of all Source 1 entities removed, so their records become distractors. This matches the test set's record density (5.75 Source 2+3 records per Source 1 entity).
 
@@ -42,7 +44,15 @@ cd src/er && ./run_all.sh
 - Also produce v2: `RUN_V2=1 ./run_all.sh`
 - Custom interpreter: `PYTHON=/path/to/python ./run_all.sh`
 
-The final files are `$ER_ROOT/output_v3/matching_results.tsv` and `candidate_pairs.tsv`. Check them with the challenge validator:
+Then run the improvement rounds and the final decision:
+
+```bash
+./run_round3.sh                                     # v4 -> $ER_ROOT/output_v4
+./run_round4.sh                                     # v5 (and v6) -> $ER_ROOT/output_v5
+python variant.py v5 France=0.5                     # final -> $ER_ROOT/output_v5_France0.5
+```
+
+`run_round4.sh` also trains the optional v6; stop it after the v5 test step if time is short. The final files are `$ER_ROOT/output_v5_France0.5/matching_results.tsv` and `candidate_pairs.tsv`. Check them with the challenge validator:
 
 ```bash
 python3 utils/validate_submission.py --matching $ER_ROOT/output_v3/matching_results.tsv \

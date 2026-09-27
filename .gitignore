@@ -12,3 +12,5 @@ work/
 .DS_Store
 __pycache__/
 *.pyc
+submission_pkg/
+*_submission.zip

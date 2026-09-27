@@ -89,13 +89,14 @@ Validation also removes 19% of all Source 1 entities at random, turning their re
 **Threshold selection method:**
 1. Each record is assigned only to its highest-scoring Source 1 entity (exclusivity).
 2. For each Source 1 entity, its candidate records are sorted by probability. The kept prefix size k (including k = 0, i.e. a singleton prediction) maximises expected per-entity F0.5, estimated by Monte Carlo over independent Bernoulli outcomes.
-3. On the out-of-fold data used for selection, this matched or beat the best global threshold: 0.98505 vs 0.98485 for v1, and 0.99001 vs 0.98999 for v3.
+3. For France, which has no labels, the cut-off was lowered from 0.7 to 0.5 after analysis showed the uncertain French pairs were mostly generic-word variants at the same address; 15.3% of French Source 1 entities share an address, against 5–6% elsewhere. The public leaderboard confirmed the direction (0.987 → 0.988).
+4. On the out-of-fold data used for selection, this matched or beat the best global threshold: 0.98505 vs 0.98485 for v1, and 0.99001 vs 0.98999 for v3.
 
 ---
 
 ## 5. Results & Error Analysis
 
-- **F_0.5 Score (macro):** 0.9904 on validation (v4) (fold 0, test-like distractor density). Public leaderboard: v1 0.978, v2 0.985.
+- **F_0.5 Score (macro):** 0.9905 on validation (v5 / final) (fold 0, test-like distractor density). Public leaderboard: v1 0.978, v2 0.985, v4 0.986, v5 0.987, final 0.988.
 
 | Version | Change | Validation F0.5 |
 |---|---|---|
@@ -103,6 +104,8 @@ Validation also removes 19% of all Source 1 entities at random, turning their re
 | v2 | + cross-encoder | 0.9900 |
 | v3 | + France-adapted cross-encoder, sibling consensus | 0.9903 |
 | v4 | + third pseudo-label round (from v3 test scores), early-stopped stage 2 | 0.9904 |
+| v5 | + language-agnostic generic-word features, same-address counts | 0.9905 |
+| final | v5, French decision cut-off 0.5 instead of 0.7 | 0.9905 (US/India unchanged) |
 
 - **Common false positives (wrong merges):**
   - Planted decoys: same address, one distinctive name token changed ("CZX Auto Glass" vs "CZXE Anto Glass", "Drayify" vs "Drayique").
@@ -133,6 +136,8 @@ The main lesson: calibrating validation to the test's distractor density was ess
 `code/business_entity_resolution/`:
 - `src/run_all.sh`: the end-to-end entry point, 21 ordered steps from the challenge TSVs to `output_v3/matching_results.tsv` and `candidate_pairs.tsv`.
 - `src/run_round3.sh`: the third pseudo-label round, producing `output_v4/`.
+- `src/run_round4.sh`: generic-word features (`gen.py`) producing `output_v5/`.
+- `src/variant.py`: the final decision with a per-country cut-off (`python variant.py v5 France=0.5`), producing the submitted files.
 - `src/analysis/`: EDA and diagnostics only.
 - `README.md`: set-up, environment variables (`ER_ROOT`, `ER_DATASET`), hardware and timings.
 - `requirements.txt`: pinned versions (Python 3.12, torch 2.8 / CUDA 12.8).

@@ -13,6 +13,8 @@ def build(split):
     c = c.join(pl.read_parquet(f"{WORK}/{split}_ce.parquet"), on=["s", "x"], how="left").with_columns(pl.col("ce").fill_null(-12.0))
     c = c.join(pl.read_parquet(f"{WORK}/{split}_ce2.parquet"), on=["s", "x"], how="left").with_columns(pl.col("ce2").fill_null(-12.0))
     c = c.join(pl.read_parquet(f"{WORK}/{split}_sib.parquet"), on=["s", "x"], how="left")
+    for e in [v for v in os.environ.get("ER_EXTRA_FEATS", "").split(",") if v]:   # extra pair-feature files, e.g. gen
+        c = c.join(pl.read_parquet(f"{WORK}/{split}_{e}.parquet"), on=["s", "x"], how="left")
     for e in [v for v in os.environ.get("ER_CE_EXTRA", "").split(",") if v]:   # later cross-encoder rounds
         c = c.join(pl.read_parquet(f"{WORK}/{split}_{e}.parquet"), on=["s", "x"], how="left").with_columns(pl.col(e).fill_null(-12.0))
         c = c.with_columns(pl.col(e).rank("ordinal", descending=True).over("x").cast(pl.Int16).alias(f"{e}_rank_x"),
